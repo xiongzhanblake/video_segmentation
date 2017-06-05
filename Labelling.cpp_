@@ -1,0 +1,129 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <string.h>
+#include <time.h>
+#include "mat.h"
+#include "mex.h"
+#include "matrix.h"
+#include "GCoptimization.h"
+
+int main()
+{
+	printf("Graph-Cut optimization:\n");
+
+	MATFile *Data;
+	const char *file_data = "Data.mat";
+	Data = matOpen(file_data,"r");
+
+	printf("reading data...\n");
+
+	const mxArray *prhs0 = matGetVariable(Data,"SPM");
+	const mxArray *prhs1 = matGetVariable(Data,"SMC");
+	const mxArray *prhs2 = matGetVariable(Data,"A");
+
+	typedef long long SiteID;
+	typedef long long LabelID;
+	typedef float EnergyTermType;
+	typedef float EnergyType;
+
+	SiteID num_pixels = mxGetN(prhs2);;
+	LabelID num_labels = mxGetNumberOfElements(prhs0)/num_pixels;;
+
+	printf("Site -> %lld, Labels -> %lld\n",num_pixels, num_labels);
+
+//	num_pixels = mxGetN(prhs2);
+//	num_labels = mxGetNumberOfElements(prhs0)/num_pixels;
+	GCoptimizationGeneralGraph<EnergyTermType, EnergyType, SiteID, LabelID> *gc = new GCoptimizationGeneralGraph<EnergyTermType, EnergyType, SiteID, LabelID>(num_pixels,num_labels);
+
+	/* set the nieghbors and weights according to sparse matrix */
+	printf("read is done...\n");
+	printf("setting data...\n");
+
+	double   *pr;
+	mwIndex  *ir, *jc;
+	mwSize   col, total=0;
+	mwIndex  starting_row_index, stopping_row_index, current_row_index;
+
+
+	/* Get the starting positions of all four data arrays. */
+	pr = mxGetPr(prhs2);
+	ir = mxGetIr(prhs2);
+	jc = mxGetJc(prhs2);
+
+//	for (col=0; col<10; col++)
+//	{
+//		starting_row_index = jc[col];
+//		stopping_row_index = jc[col+1];
+//		if (starting_row_index == stopping_row_index) {
+//			continue;
+//		} else {
+//			for (current_row_index = starting_row_index;
+//				current_row_index < stopping_row_index;
+//				current_row_index++)
+//					printf("(%d\t,%d\t)\t\t%f\n",ir[current_row_index]+1,col+1,pr[total++]);
+//		}
+//	}
+
+	for (col=0; col<(mwSize)num_pixels; col++)  {
+		starting_row_index = jc[col];
+		stopping_row_index = jc[col+1];
+		if (starting_row_index == stopping_row_index) {
+			continue;
+		} else {
+			for (current_row_index = starting_row_index;
+				current_row_index < stopping_row_index;
+				current_row_index++)  {
+					/* use only upper triangle of matrix */
+					if ( ir[current_row_index] >= col ) {
+						gc->setNeighbors(ir[current_row_index], col, pr[total++]);
+					} else {
+						total++;
+					}
+
+			}
+		}
+	}
+	EnergyTermType *datacost = (EnergyTermType*)mxGetData(prhs0);
+	DataCostFn<EnergyTermType, SiteID, LabelID> *dc = new DataCostFnFromArray<EnergyTermType, SiteID, LabelID>(datacost,num_labels);
+	EnergyTermType *SmoothnessCost = (EnergyTermType*)mxGetData(prhs1);
+	SmoothCostFn<EnergyTermType, SiteID, LabelID> *sc = new SmoothCostFnFromArray<EnergyTermType, SiteID, LabelID>(SmoothnessCost,num_labels);
+	/* set data term */
+	gc->setDataCost(dc);
+	/* set the smoothness term */
+	gc->setSmoothCost(sc);
+	printf("setting is done...\n");
+//	GCoptimization* gc = GraphCutConstrSparse(3,prhs);
+	printf("label expansion...\n");
+	gc->expansion(-1);
+	mxArray *plhs1 = mxCreateNumericMatrix(gc->numSites(), 1, mxINT64_CLASS, mxREAL);
+	gc->whatLabel(0, mxGetNumberOfElements(plhs1),(LabelID*) mxGetData(plhs1));
+	printf("label expansion is done...\n");
+//	GCoptimization::EnergyType e = gc->compute_energy();
+//	EnergyType se = gc->giveSmoothEnergy();
+//	EnergyType de = gc->giveDataEnergy();
+
+//	printf("Data Cost -> %f\tSmoothterm -> %f\n",de,se);
+	printf("deleting Graph-Cut optimizer...\n");
+	delete gc;
+	printf("deletion is done...\n");
+	mxDestroyArray((mxArray*)prhs0);
+	mxDestroyArray((mxArray*)prhs1);
+	mxDestroyArray((mxArray*)prhs2);
+	printf("file is saving...\n");
+	MATFile *Result;
+	const char *file_Output = "label.mat";
+	Result = matOpen(file_Output,"w");
+	matPutVariable(Result, "label", plhs1);
+	////	matPutVariable(result_mat, "sp_j", plhs[1]);
+	////	matPutVariable(result_mat, "sp_v", plhs[2]);
+	////	matPutVariable(result_mat, "MaskWeights", plhs[1]);
+	matClose(Result);
+	matClose(Data);
+	mxDestroyArray(plhs1);
+	//	mexPrintf("Save result is done!\n");
+	printf("file is saved.\n");
+	printf("releasing memory...\n");
+	printf("exit with success!\n");
+	return 0;
+}

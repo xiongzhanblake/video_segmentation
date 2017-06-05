@@ -1,0 +1,141 @@
+/*
+ * main.cpp
+ *
+ *  Created on: Apr 26, 2017
+ *      Author: xiong
+ */
+
+#include "GCoptimization.h"
+
+template <typename EnergyTermType, typename EnergyType, typename SiteID, typename LabelID>
+void GeneralGraph_DArraySArraySpatVarying(SiteID width,SiteID height,SiteID num_pixels,SiteID num_labels)
+{
+	int *result = new int[num_pixels];   // stores result of optimization
+
+	// first set up the array for data costs
+	EnergyTermType *data = new EnergyTermType[num_pixels*num_labels];
+	for ( int i = 0; i < num_pixels; i++ )
+	{
+		for (int l = 0; l < num_labels; l++ )
+		{
+			if (i < 25 ){
+				if(  l == 0 ) data[i*num_labels+l] = 0;
+				else data[i*num_labels+l] = 10;
+				printf("%1.0f\t",data[i*num_labels+l]);
+			}
+			else {
+				if(  l == 5 ) data[i*num_labels+l] = 0;
+				else data[i*num_labels+l] = 10;
+				printf("%1.0f\t",data[i*num_labels+l]);
+			}
+		}
+		printf("\n");
+	}
+
+//	EnergyTermType data[] = {0,3,5,9,0,9,2,3,0,0,3,5};
+//	EnergyTermType data[] = {0,3,9,0,3,2,0,3};
+	DataCostFn<EnergyTermType, SiteID, LabelID> *dc = new DataCostFnFromArray<EnergyTermType, SiteID, LabelID>(data,num_labels);
+
+//	// next set up the array for smooth costs
+	printf("------------------------------------------------------------------\n");
+	EnergyTermType *smooth = new EnergyTermType[num_labels*num_labels];
+	for ( int l1 = 0; l1 < num_labels; l1++ )
+	{
+		for (int l2 = 0; l2 < num_labels; l2++ )
+		{
+			smooth[l1+l2*num_labels] = (l1-l2)*(l1-l2) <= 4  ? (l1-l2)*(l1-l2):4;
+			printf("%1.0f\t",smooth[l1+l2*num_labels]);
+		}
+		printf("\n");
+	}
+
+//	EnergyTermType smooth[] = {0,1,2,1,0,1,2,1,0};
+//	EnergyTermType smooth[] = {0,1,1,0};
+
+	SmoothCostFn<EnergyTermType, SiteID, LabelID> *sc = new SmoothCostFnFromArray<EnergyTermType, SiteID, LabelID>(smooth,num_labels);
+
+	try{
+		GCoptimizationGeneralGraph<EnergyTermType, EnergyType, SiteID, LabelID> *gc = new GCoptimizationGeneralGraph<EnergyTermType, EnergyType, SiteID, LabelID>(num_pixels,num_labels);
+		gc->setDataCost(dc);
+		gc->setSmoothCost(sc);
+
+//		EnergyTermType neighbors[] = {0,1,0,0,0,0,1,0,0,0,0,2,0,0,0,0};
+//		EnergyTermType neighbors[] = {0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0};
+
+//		for (int i = 0; i < num_pixels; i ++)
+//			for (int j = i; j < num_pixels; j ++)
+//				if (neighbors[i*num_pixels+j]>0)
+//					gc->setNeighbors(i,j,neighbors[i*num_pixels+j]);
+//		printf("------------------------------------------------------------------\n");
+//		int neighbors[num_pixels][num_pixels];
+//
+//		for (int i = 0; i < num_pixels; i ++)
+//			for (int j = i; j < num_pixels; j ++)
+//				neighbors[i][j] = 0;
+
+//		 now set up a grid neighborhood system
+//		 first set up horizontal neighbors
+		for (int y = 0; y < height; y++ )
+			for (int  x = 1; x < width; x++ ){
+				int pos1 = x-1+y*width;
+				int pos2 =x+y*width;
+//				gc->setNeighbors(pos1,pos2,pos1+pos2);
+				gc->setNeighbors(pos1,pos2,1);
+//				neighbors[pos1][pos2] = pos1+pos2;
+			}
+
+//		 next set up vertical neighbors
+		for (int y = 1; y < height; y++ )
+			for (int  x = 0; x < width; x++ ){
+				int pos1 = x+(y-1)*width;
+				int pos2 =x+y*width;
+//				gc->setNeighbors(p1,p2,p1+p2);
+				gc->setNeighbors(pos1,pos2,1);
+//				neighbors[p1][p2] = p1+p2;
+			}
+
+//		for (int i = 0; i < num_pixels; i ++)
+//		{
+//			for (int j = i; j < num_pixels; j ++)
+//					std::cout<<neighbors[i][j]<<"\t";
+//			printf("\n");
+//		}
+		printf("\nBefore optimization energy is %f",gc->compute_energy());
+		printf("\n");
+		gc->expansion(-1);// run expansion for 2 iterations. For swap use gc->swap(num_iterations);
+		printf("\nAfter optimization energy is %f",gc->compute_energy());
+		printf("\n");
+		for ( int  i = 0; i < num_pixels; i++ )
+		{
+			result[i] = gc->whatLabel(i);
+			printf("%d\t",result[i]+1);
+			if ((i+1)%10 == 0) printf("\n");
+		}
+		printf("\n");
+		delete gc;
+	}
+	catch (GCException& e){
+		e.Report();
+	}
+
+	delete [] result;
+//	delete [] smooth;
+//	delete [] data;
+
+
+}
+
+
+int main()
+{
+	typedef long long SiteID;
+	typedef long long LabelID;
+	typedef float EnergyTermType;
+	typedef float EnergyType;
+	SiteID width = 10;
+	SiteID height = 5;
+	SiteID num_sites = width*height;
+	LabelID num_labels = 7;
+	GeneralGraph_DArraySArraySpatVarying<EnergyTermType, EnergyType, SiteID, LabelID>(width,height,num_sites,num_labels);
+	return 0;
+}
